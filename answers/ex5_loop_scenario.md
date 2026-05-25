@@ -12,7 +12,7 @@ in the same response — both carry `parallel_safe=True` and the framework ran
 them concurrently (identical timestamp, 13:34:52 UTC). The next turn called
 `calculate_cost(venue_id='haymarket_tap', party_size=6, duration_hours=3,
 catering_tier='bar_snacks')` returning total £556, deposit £111. Then
-`generate_flyer` wrote `workspace/flyer.html` (1056 bytes). Finally
+`generate_flyer` wrote `workspace/flyer.html` (1056 chars per trace, 1059 bytes on disk due to multi-byte £/° characters). Finally
 `complete_task` closed the session.
 
 The dataflow integrity check would have caught any fabricated value in the

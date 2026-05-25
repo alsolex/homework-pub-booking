@@ -101,25 +101,28 @@ session — venue name from training data, costs from prior context, weather fro
 common knowledge. A booking confirmation goes to a pub with none of these
 details on record.
 
-The sovereign-agent primitive that surfaces this is `record_tool_call` — the
-hook that appends a `ToolCallRecord(tool_name, arguments, output)` to
-`_TOOL_CALL_LOG` every time a tool executes. `verify_dataflow` then
-cross-checks every fact extracted from the flyer against `r.output` entries in
-the log. If a value appears in the flyer but in no tool's output,
-`verify_dataflow` returns `dataflow FAIL` before the session is marked complete.
+The sovereign-agent primitive that surfaces this is **manifest discipline** —
+the executor ticket's `tool_calls_made` array records every tool invocation
+and its exact output before the ticket transitions to `success`. This is the
+immutable audit log. `record_tool_call` (in `integrity.py:35–38`) is the hook
+that mirrors each entry into `_TOOL_CALL_LOG` so `verify_dataflow` can
+cross-check it against the final flyer. If a value appears in the flyer but
+in no tool's `output` record, `verify_dataflow` returns `dataflow FAIL`
+before the session is marked complete.
 
-Without `record_tool_call`, there is no programmatic link between tool execution
-and flyer content — `verify_dataflow` has nothing to scan and the fabrication
-cascades silently: the ticket records `state: success`, the session advances to
-`complete`, and a booking email goes to the customer.
+Without manifest discipline, there is no programmatic link between tool
+execution and flyer content — `verify_dataflow` has nothing to scan and the
+fabrication cascades silently: the ticket records `state: success`, the
+session advances to `complete`, and a booking email goes to the customer.
 
-Session `sess_7fc879f76f7a` shows the primitive working correctly: all four
+Session `sess_7fc879f76f7a` shows the primitive working correctly: executor
+ticket `tk_7826fd9a` has a `tool_calls_made` array with 5 entries. All four
 facts in the flyer (£556, £111, 12°C, cloudy) trace back to `calculate_cost`
-and `get_weather` outputs recorded by `record_tool_call`, not to the executor's
-internal state. `verify_dataflow` returns `dataflow OK: verified 4 fact(s)`.
-The check would flip to `dataflow FAIL` if any of those values were invented,
-because the invented value would appear in generate_flyer's `arguments` record
-but not in any upstream tool's `output` record.
+and `get_weather` outputs in that manifest. `verify_dataflow` returns
+`dataflow OK: verified 4 fact(s)`. The check would flip to `dataflow FAIL`
+if any of those values were invented, because the invented value would appear
+in generate_flyer's `arguments` but not in any upstream tool's `output` field
+in `tool_calls_made`.
 
 ### Citation
 

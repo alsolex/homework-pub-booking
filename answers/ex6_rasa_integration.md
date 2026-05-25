@@ -33,12 +33,17 @@ Ex6 sessions remain at `state: "planning"` in `session.json` because
 `RasaStructuredHalf.run()` invokes the structured half directly — it never
 passes through the planner or executor, so no `trace.jsonl` or tickets are
 written. The scenario's output is visible at the terminal: running `make ex6`
-with `deposit=£200, party_size=6` returns `next_action: complete` and
-`booking_reference: BK-7D401E9E`; passing `party_size=12` or `deposit=£500`
-returns `next_action: escalate` with the appropriate reason.
+with `deposit=£200, party_size=6` returns `next_action: complete` and a
+deterministic booking reference (the mock generates `"BK-" + SHA1(
+"<venue_id>|<date>|<time>|<party>")`[:8].upper()` — for haymarket_tap on
+2026-04-25 at 19:30 with party=6 this produces `BK-7D401E9E`); passing
+`party_size=12` or `deposit=£500` returns `next_action: escalate` with the
+appropriate reason.
 
 ## Citations
 
 - `starter/rasa_half/structured_half.py:75–213` — `RasaStructuredHalf.run()`: normalise → POST → parse → `HalfResult`
 - `starter/rasa_half/validator.py:52–106` — `normalise_booking_payload`: currency, time, venue_id, party_size, date normalisation
 - `starter/rasa_half/structured_half.py:451–464` — mock: `party > 8` → `party_too_large`; `deposit > 300` → `deposit_too_high`
+- `starter/rasa_half/structured_half.py:467–474` — mock booking reference: deterministic `SHA1("<venue_id>|<date>|<time>|<party>")[:8].upper()`, e.g. `BK-7D401E9E` for `haymarket_tap|2026-04-25|19:30|6`
+- `evidence/homework/ex6/sess_832c9ccdc623/session.json` — `state: "planning"` confirms no planner/executor pass-through

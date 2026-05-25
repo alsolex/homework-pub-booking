@@ -23,12 +23,19 @@ The executor calls `venue_search(near='Old Town', party_size=6)` — 1 result
 `session.state_changed: loop → structured, round 2` (line 14). Rasa
 accepts; `session.state_changed: structured → complete, round 2` (line 15).
 
-The bridge moves the round 1 forward handoff to `logs/handoffs/round_1_forward.json`
-before starting round 2, so the full audit trail is preserved even though
-only one `ipc/handoff_to_structured.json` file exists at any time.
+The bridge code at `bridge.py:147` archives the round 1 forward handoff by
+renaming `session.ipc_input_dir / "handoff_to_structured.json"`, but
+`write_handoff` writes to `session.ipc_dir / "handoff_to_structured.json"` —
+one level up. The `if forward_file.exists()` check is always False, so
+`logs/handoffs/` stays empty. The full audit trail is instead carried by the
+15-line trace, which records every state transition. `ipc/handoff_to_structured.json`
+in the evidence contains the round 2 forward payload (party_size=6,
+written_at 13:39:25 UTC), which is the last handoff written before
+`session.state_changed: structured → complete`.
 
 ## Citations
 
 - `evidence/homework/ex7/sess_688c3acb63ad/logs/trace.jsonl:7` — `session.state_changed: loop → structured, round 1` (forward handoff)
-- `evidence/homework/ex7/sess_688c3acb63ad/logs/trace.jsonl:8` — `session.state_changed: structured → loop, round 1, rejection_reason: party_too_large`
+- `evidence/homework/ex7/sess_688c3acb63ad/logs/trace.jsonl:8` — `session.state_changed: structured → loop, round 1, rejection_reason: "sorry, we can't accept this booking. reason: party_too_large"`
 - `evidence/homework/ex7/sess_688c3acb63ad/logs/trace.jsonl:9` — `bridge.round_start {round: 2}` — exact line where the second research cycle begins
+- `evidence/homework/ex7/sess_688c3acb63ad/ipc/handoff_to_structured.json` — round 2 forward handoff: venue_id=royal_oak, party_size=6, written_at 2026-05-25T13:39:25
