@@ -23,7 +23,7 @@ from sovereign_agent._internal.llm_client import (
     ScriptedResponse,
     ToolCall,
 )
-from sovereign_agent._internal.paths import example_sessions_dir
+from sovereign_agent._internal.paths import user_data_dir
 from sovereign_agent.executor import DefaultExecutor
 from sovereign_agent.halves.loop import LoopHalf
 from sovereign_agent.planner import DefaultPlanner
@@ -33,25 +33,87 @@ from sovereign_agent.tickets.ticket import list_tickets
 from starter.edinburgh_research.integrity import clear_log, verify_dataflow
 from starter.edinburgh_research.tools import build_tool_registry
 
+_TASK_TEXT = (
+    "Research an Edinburgh pub and produce an HTML event flyer.\n\n"
+    "Context:\n"
+    "  - party size: 6\n"
+    "  - date: 2026-04-25 (a Saturday)\n"
+    "  - time: 19:30\n"
+    "  - area: near Haymarket station, Edinburgh\n\n"
+    "REQUIRED tool sequence (all four tools MUST run, in order):\n"
+    "  1. venue_search(near='Haymarket', party_size=6, budget_max_gbp=800)\n"
+    "  2. get_weather(city='edinburgh', date='2026-04-25')\n"
+    "  3. calculate_cost(venue_id=<chosen pub's id>, party_size=6,\n"
+    "                    duration_hours=3, catering_tier='bar_snacks')\n"
+    "  4. generate_flyer(event_details={...})  <-- MUST be called\n"
+    "  5. complete_task(result={'flyer': 'workspace/flyer.html', ...})\n\n"
+    "Do NOT call complete_task until you have called generate_flyer. "
+    "The scenario is graded by the existence of workspace/flyer.html, "
+    "not by your final text response. The flyer is HTML — exact tool "
+    "names and argument shapes are in each tool's docstring; call them "
+    "exactly as described."
+)
+
+_PLANNER_SYSTEM = """\
+You are the PLANNER of an always-on agent.
+
+OUTPUT FORMAT: Respond with ONLY a valid JSON array. No prose, no markdown, no code fences.
+
+Produce EXACTLY 1 subgoal:
+
+[{
+  "id": "sg_1",
+  "description": "Step 1: call venue_search(near='Haymarket', party_size=6, budget_max_gbp=800) AND get_weather(city='edinburgh', date='2026-04-25') in one parallel turn. Step 2: call calculate_cost(venue_id=<id from venue_search>, party_size=6, duration_hours=3, catering_tier='bar_snacks'). Step 3: call generate_flyer with event_details built ONLY from the tool outputs just received — do not invent values. Step 4: call complete_task and stop.",
+  "success_criterion": "flyer.html written to workspace/",
+  "estimated_tool_calls": 5,
+  "depends_on": [],
+  "assigned_half": "loop"
+}]
+
+Do not deviate. Output exactly this JSON (with the description as shown).
+"""
+
+_EXECUTOR_SYSTEM = """\
+You are the EXECUTOR of an always-on agent. You receive one subgoal at a time.
+
+SOURCE OF TRUTH: every value in generate_flyer MUST come from a tool response in
+this conversation. No exceptions. Do not use any prior knowledge about Edinburgh pubs,
+weather, or prices — this is a fictional simulation with scripted data.
+
+STEP-BY-STEP EXECUTION:
+1. Emit venue_search + get_weather as TWO tool calls in ONE response (parallel).
+2. After seeing their results, emit calculate_cost in the next response.
+   Use the venue_id returned by venue_search. Do not guess the venue_id.
+3. After seeing calculate_cost result, emit generate_flyer. Build event_details
+   ONLY from the tool responses you received in steps 1-2:
+     venue_name           <- results[0]["name"] from venue_search
+     venue_address        <- results[0]["address"] from venue_search
+     date                 <- "2026-04-25"
+     time                 <- "19:30"
+     party_size           <- 6
+     condition            <- "condition" from get_weather response
+     temperature_c        <- "temperature_c" integer from get_weather response
+     total_gbp            <- "total_gbp" integer from calculate_cost response
+     deposit_required_gbp <- "deposit_required_gbp" integer from calculate_cost response
+4. After generate_flyer confirms the file was written, emit complete_task. Then stop.
+
+RULES:
+- Each of the 4 steps is one response. Do not combine steps 2-4 into one response.
+- complete_task is terminal — emit nothing after it.
+- Do not call any tool more than once.
+"""
+
 
 def _build_fake_client() -> FakeLLMClient:
-    """Scripts a 2-subgoal trajectory for offline mode."""
+    """Scripts a 1-subgoal trajectory for offline mode."""
     plan_json = json.dumps(
         [
             {
                 "id": "sg_1",
-                "description": "research Edinburgh venues near Haymarket for a party of 6",
-                "success_criterion": "at least one candidate identified",
-                "estimated_tool_calls": 3,
-                "depends_on": [],
-                "assigned_half": "loop",
-            },
-            {
-                "id": "sg_2",
-                "description": "produce an HTML flyer with the chosen venue, weather, and cost",
+                "description": "venue_search + get_weather (parallel), then calculate_cost, then generate_flyer, then complete_task",
                 "success_criterion": "flyer.html written to workspace/",
-                "estimated_tool_calls": 1,
-                "depends_on": ["sg_1"],
+                "estimated_tool_calls": 5,
+                "depends_on": [],
                 "assigned_half": "loop",
             },
         ]
@@ -88,8 +150,8 @@ def _build_fake_client() -> FakeLLMClient:
                 "party_size": 6,
                 "condition": "cloudy",
                 "temperature_c": 12,
-                "total_gbp": 540,
-                "deposit_required_gbp": 0,
+                "total_gbp": 556,
+                "deposit_required_gbp": 111,
             }
         },
     )
@@ -102,12 +164,11 @@ def _build_fake_client() -> FakeLLMClient:
     return FakeLLMClient(
         [
             ScriptedResponse(content=plan_json),
-            ScriptedResponse(tool_calls=[search_call, weather_call, cost_call]),
+            ScriptedResponse(tool_calls=[search_call, weather_call]),
+            ScriptedResponse(tool_calls=[cost_call]),
             ScriptedResponse(tool_calls=[flyer_call]),
             ScriptedResponse(tool_calls=[complete_call]),
-            ScriptedResponse(content="Subgoal 1 complete."),
-            ScriptedResponse(content="Booking researched; flyer at workspace/flyer.html."),
-            ScriptedResponse(content="Task complete."),
+            ScriptedResponse(content="Done: flyer at workspace/flyer.html."),
         ]
     )
 
@@ -195,109 +256,94 @@ async def run_scenario(real: bool) -> int:
     # populate _TOOL_CALL_LOG before the real scenario runs.
     clear_log()
 
-    with example_sessions_dir("ex5-edinburgh-research", persist=real) as sessions_root:
-        session = create_session(
-            scenario="edinburgh-research",
-            task=(
-                "Research an Edinburgh pub and produce an HTML event flyer.\n\n"
-                "Context:\n"
-                "  - party size: 6\n"
-                "  - date: 2026-04-25 (a Saturday)\n"
-                "  - time: 19:30\n"
-                "  - area: near Haymarket station, Edinburgh\n\n"
-                "REQUIRED tool sequence (all four tools MUST run, in order):\n"
-                "  1. venue_search(near='Haymarket', party_size=6, budget_max_gbp=800)\n"
-                "  2. get_weather(city='edinburgh', date='2026-04-25')\n"
-                "  3. calculate_cost(venue_id=<chosen pub's id>, party_size=6,\n"
-                "                    duration_hours=3, catering_tier='bar_snacks')\n"
-                "  4. generate_flyer(event_details={...})  <-- MUST be called\n"
-                "  5. complete_task(result={'flyer': 'workspace/flyer.html', ...})\n\n"
-                "Do NOT call complete_task until you have called generate_flyer. "
-                "The scenario is graded by the existence of workspace/flyer.html, "
-                "not by your final text response. The flyer is HTML — exact tool "
-                "names and argument shapes are in each tool's docstring; call them "
-                "exactly as described."
-            ),
-            sessions_dir=sessions_root,
+    sessions_root = user_data_dir() / "homework" / "ex5"
+    sessions_root.mkdir(parents=True, exist_ok=True)
+    session = create_session(
+        scenario="edinburgh-research",
+        task=_TASK_TEXT,
+        sessions_dir=sessions_root,
+    )
+    print(f"Session {session.session_id}")
+    print(f"  dir: {session.directory}")
+
+    if real:
+        from sovereign_agent.config import Config
+
+        cfg = Config.from_env()
+        print(f"  LLM: {cfg.llm_base_url} (live)")
+        print(f"  planner:  {cfg.llm_planner_model}")
+        print(f"  executor: {cfg.llm_executor_model}")
+        client = OpenAICompatibleClient(
+            base_url=cfg.llm_base_url,
+            api_key_env=cfg.llm_api_key_env,
         )
-        print(f"Session {session.session_id}")
-        print(f"  dir: {session.directory}")
+        # _PLANNER_SYSTEM dictates exact JSON — no thinking needed for planning.
+        planner_model = cfg.llm_executor_model
+        executor_model = cfg.llm_executor_model
+    else:
+        print("  LLM: FakeLLMClient (offline, scripted)")
+        client = _build_fake_client()
+        planner_model = executor_model = "fake"
 
-        if real:
-            from sovereign_agent.config import Config
+    tools = build_tool_registry(session)
+    half = LoopHalf(
+        planner=DefaultPlanner(model=planner_model, client=client, system_prompt=_PLANNER_SYSTEM),
+        executor=DefaultExecutor(
+            model=executor_model, client=client, tools=tools, system_prompt=_EXECUTOR_SYSTEM
+        ),  # type: ignore[arg-type]
+    )
 
-            cfg = Config.from_env()
-            print(f"  LLM: {cfg.llm_base_url} (live)")
-            print(f"  planner:  {cfg.llm_planner_model}")
-            print(f"  executor: {cfg.llm_executor_model}")
-            client = OpenAICompatibleClient(
-                base_url=cfg.llm_base_url,
-                api_key_env=cfg.llm_api_key_env,
-            )
-            planner_model = cfg.llm_planner_model
-            executor_model = cfg.llm_executor_model
+    result = await half.run(session, {"task": _TASK_TEXT})
+    print(f"\nLoop half outcome: {result.next_action}")
+    print(f"  summary: {result.summary}")
+
+    print("\nTickets:")
+    for t in list_tickets(session):
+        r = t.read_result()
+        print(f"  {t.ticket_id}  {t.operation:50s}  {r.state.value}")
+
+    flyer_path = session.workspace_dir / "flyer.html"
+    if not flyer_path.exists():
+        print("\n✗ No flyer written to workspace/. Ex5 failed.")
+        from starter.edinburgh_research.integrity import _TOOL_CALL_LOG
+
+        if _TOOL_CALL_LOG:
+            print(f"\n  Tools that DID run ({len(_TOOL_CALL_LOG)} calls):")
+            for i, rec in enumerate(_TOOL_CALL_LOG, 1):
+                args_preview = str(rec.arguments)[:80]
+                print(f"    {i}. {rec.tool_name}({args_preview})")
+            if not any(r.tool_name == "generate_flyer" for r in _TOOL_CALL_LOG):
+                print(
+                    "\n  ★ generate_flyer was never called. The LLM either completed "
+                    "the task without writing the flyer, or called complete_task "
+                    "too early. Check sessions/<id>/logs/trace.jsonl."
+                )
         else:
-            print("  LLM: FakeLLMClient (offline, scripted)")
-            client = _build_fake_client()
-            planner_model = executor_model = "fake"
+            print("\n  No tools ran at all — the LLM didn't invoke any registered tool.")
+            print(f"  Check the trace: {session.trace_path}")
+        return 1
 
-        tools = build_tool_registry(session)
-        half = LoopHalf(
-            planner=DefaultPlanner(model=planner_model, client=client),
-            executor=DefaultExecutor(model=executor_model, client=client, tools=tools),  # type: ignore[arg-type]
-        )
+    print(f"\n=== flyer.html ({flyer_path.stat().st_size} bytes) ===")
+    flyer_content = flyer_path.read_text(encoding="utf-8")
+    print(flyer_content[:500] + ("...\n[truncated]" if len(flyer_content) > 500 else ""))
 
-        result = await half.run(session, {"task": "research Edinburgh venue and write flyer"})
-        print(f"\nLoop half outcome: {result.next_action}")
-        print(f"  summary: {result.summary}")
+    print("\n=== Dataflow integrity check ===")
+    integrity = verify_dataflow(flyer_content)
+    if integrity.ok:
+        print(f"✓  {integrity.summary}")
+        if integrity.verified_facts:
+            print(f"   Verified {len(integrity.verified_facts)} fact(s) against tool outputs.")
+    else:
+        print(f"✗  {integrity.summary}")
+        print(f"   Unverified facts: {integrity.unverified_facts}")
+        return 2
 
-        print("\nTickets:")
-        for t in list_tickets(session):
-            r = t.read_result()
-            print(f"  {t.ticket_id}  {t.operation:50s}  {r.state.value}")
+    if real:
+        print(f"\nArtifacts persist at: {session.directory}")
+        print(f'Inspect with: ls -R "{session.directory}"')
+        print(f"📜 Narrate this run: make narrate SESSION={session.session_id}")
 
-        flyer_path = session.workspace_dir / "flyer.html"
-        if not flyer_path.exists():
-            print("\n✗ No flyer written to workspace/. Ex5 failed.")
-            from starter.edinburgh_research.integrity import _TOOL_CALL_LOG
-
-            if _TOOL_CALL_LOG:
-                print(f"\n  Tools that DID run ({len(_TOOL_CALL_LOG)} calls):")
-                for i, rec in enumerate(_TOOL_CALL_LOG, 1):
-                    args_preview = str(rec.arguments)[:80]
-                    print(f"    {i}. {rec.tool_name}({args_preview})")
-                if not any(r.tool_name == "generate_flyer" for r in _TOOL_CALL_LOG):
-                    print(
-                        "\n  ★ generate_flyer was never called. The LLM either completed "
-                        "the task without writing the flyer, or called complete_task "
-                        "too early. Check sessions/<id>/logs/trace.jsonl."
-                    )
-            else:
-                print("\n  No tools ran at all — the LLM didn't invoke any registered tool.")
-                print(f"  Check the trace: {session.trace_path}")
-            return 1
-
-        print(f"\n=== flyer.html ({flyer_path.stat().st_size} bytes) ===")
-        flyer_content = flyer_path.read_text(encoding="utf-8")
-        print(flyer_content[:500] + ("...\n[truncated]" if len(flyer_content) > 500 else ""))
-
-        print("\n=== Dataflow integrity check ===")
-        integrity = verify_dataflow(flyer_content)
-        if integrity.ok:
-            print(f"✓  {integrity.summary}")
-            if integrity.verified_facts:
-                print(f"   Verified {len(integrity.verified_facts)} fact(s) against tool outputs.")
-        else:
-            print(f"✗  {integrity.summary}")
-            print(f"   Unverified facts: {integrity.unverified_facts}")
-            return 2
-
-        if real:
-            print(f"\nArtifacts persist at: {session.directory}")
-            print(f'Inspect with: ls -R "{session.directory}"')
-            print(f"📜 Narrate this run: make narrate SESSION={session.session_id}")
-
-        return 0
+    return 0
 
 
 def main() -> None:

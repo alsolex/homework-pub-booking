@@ -109,7 +109,9 @@ def fact_appears_in_log(fact: Any, log: list[ToolCallRecord] | None = None) -> b
             return any(_scan(v) for v in obj)
         return False
 
-    return any(_scan(r.output) or _scan(r.arguments) for r in records)
+    # Only scan tool OUTPUTS — scanning arguments would let generate_flyer
+    # self-verify its own (potentially fabricated) event_details inputs.
+    return any(_scan(r.output) for r in records)
 
 
 # ---------------------------------------------------------------------------

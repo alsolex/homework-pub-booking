@@ -14,12 +14,22 @@ The grader checks for:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from sovereign_agent.session.directory import Session
-from sovereign_agent.tools.registry import ToolRegistry, ToolResult, _RegisteredTool
+from sovereign_agent.tools.registry import ToolError, ToolRegistry, ToolResult, _RegisteredTool
+
+from starter.edinburgh_research.integrity import record_tool_call
 
 _SAMPLE_DATA = Path(__file__).parent / "sample_data"
+
+
+def _load_json(filename: str) -> dict | list:
+    path = _SAMPLE_DATA / filename
+    if not path.exists():
+        raise ToolError("SA_TOOL_DEPENDENCY_MISSING", f"{filename} not found at {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -41,9 +51,26 @@ def venue_search(near: str, party_size: int, budget_max_gbp: int = 1000) -> Tool
     MUST call record_tool_call(...) before returning so the integrity
     check can see what data was produced.
     """
-    # TODO 1a: load venues.json. Raise ToolError(SA_TOOL_DEPENDENCY_MISSING)
-    #          if the file is absent.
-    raise NotImplementedError("TODO 1: implement venue_search")
+    venues = _load_json("venues.json")
+    results = [
+        v
+        for v in venues
+        if v.get("open_now")
+        and near.lower() in v.get("area", "").lower()
+        and v.get("seats_available_evening", 0) >= party_size
+        and (v.get("hire_fee_gbp", 0) + v.get("min_spend_gbp", 0)) <= budget_max_gbp
+    ]
+    output = {"near": near, "party_size": party_size, "results": results, "count": len(results)}
+    record_tool_call(
+        "venue_search",
+        {"near": near, "party_size": party_size, "budget_max_gbp": budget_max_gbp},
+        output,
+    )
+    return ToolResult(
+        success=True,
+        output=output,
+        summary=f"venue_search({near!r}, party={party_size}): {len(results)} result(s)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +88,36 @@ def get_weather(city: str, date: str) -> ToolResult:
 
     MUST call record_tool_call(...) before returning.
     """
-    raise NotImplementedError("TODO 2: implement get_weather")
+    weather_data = _load_json("weather.json")
+    city_key = city.lower()
+    city_data = weather_data.get(city_key)
+    if not city_data:
+        output = {"error": f"city {city!r} not in fixture", "error_code": "SA_TOOL_INVALID_INPUT"}
+        record_tool_call("get_weather", {"city": city, "date": date}, output)
+        return ToolResult(
+            success=False, output=output, summary=f"get_weather({city!r}, {date}): city not found"
+        )
+
+    day_data = city_data.get(date)
+    if not day_data:
+        output = {
+            "error": f"date {date!r} not in fixture for {city}",
+            "error_code": "SA_TOOL_INVALID_INPUT",
+        }
+        record_tool_call("get_weather", {"city": city, "date": date}, output)
+        return ToolResult(
+            success=False, output=output, summary=f"get_weather({city!r}, {date}): date not found"
+        )
+
+    output = {"city": city_key, "date": date, **day_data}
+    record_tool_call("get_weather", {"city": city, "date": date}, output)
+    cond = day_data.get("condition", "unknown")
+    temp = day_data.get("temperature_c", "?")
+    return ToolResult(
+        success=True,
+        output=output,
+        summary=f"get_weather({city!r}, {date}): {cond}, {temp}C",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -98,12 +154,93 @@ def calculate_cost(
 
     MUST call record_tool_call(...) before returning.
     """
-    raise NotImplementedError("TODO 3: implement calculate_cost")
+    catering = _load_json("catering.json")
+    venues = _load_json("venues.json")
+
+    base_rates = catering["base_rates_gbp_per_head"]
+    if catering_tier not in base_rates:
+        catering_tier = "bar_snacks"
+    base_per_head = base_rates[catering_tier]
+
+    venue_mult = catering["venue_modifiers"].get(venue_id, 1.0)
+
+    venue_info = next((v for v in venues if v["id"] == venue_id), {})
+    hire_fee = venue_info.get("hire_fee_gbp", 0)
+    min_spend = venue_info.get("min_spend_gbp", 0)
+
+    subtotal = int(base_per_head * venue_mult * party_size * max(1, duration_hours))
+    service = int(subtotal * catering["service_charge_percent"] / 100)
+    total = subtotal + service + hire_fee + min_spend
+
+    if total < 300:
+        deposit = 0
+    elif total <= 1000:
+        deposit = int(total * 0.20)
+    else:
+        deposit = int(total * 0.30)
+
+    output = {
+        "venue_id": venue_id,
+        "party_size": party_size,
+        "duration_hours": duration_hours,
+        "catering_tier": catering_tier,
+        "subtotal_gbp": subtotal,
+        "service_gbp": service,
+        "total_gbp": total,
+        "deposit_required_gbp": deposit,
+    }
+    record_tool_call(
+        "calculate_cost",
+        {
+            "venue_id": venue_id,
+            "party_size": party_size,
+            "duration_hours": duration_hours,
+            "catering_tier": catering_tier,
+        },
+        output,
+    )
+    return ToolResult(
+        success=True,
+        output=output,
+        summary=f"calculate_cost({venue_id!r}, {party_size}): total £{total}, deposit £{deposit}",
+    )
 
 
 # ---------------------------------------------------------------------------
 # TODO 4 — generate_flyer
 # ---------------------------------------------------------------------------
+
+_FLYER_HTML = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Event at {venue_name}</title>
+  <style>
+    body {{ font-family: sans-serif; max-width: 600px; margin: 2em auto; padding: 1em; border: 2px solid #333; }}
+    h1   {{ color: #222; }}
+    dl   {{ display: grid; grid-template-columns: max-content auto; gap: .4em 1em; }}
+    dt   {{ font-weight: bold; }}
+    dd   {{ margin: 0; }}
+  </style>
+</head>
+<body>
+<h1>Private Event at <span data-testid="venue_name">{venue_name}</span></h1>
+<dl>
+  <dt>Address</dt>    <dd data-testid="venue_address">{venue_address}</dd>
+  <dt>Date</dt>       <dd data-testid="date">{date}</dd>
+  <dt>Time</dt>       <dd data-testid="time">{time}</dd>
+  <dt>Party size</dt> <dd data-testid="party_size">{party_size}</dd>
+  <dt>Weather</dt>    <dd data-testid="condition">{condition},
+                          <span data-testid="temperature_c">{temperature_c}</span>°C</dd>
+  <dt>Total cost</dt> <dd data-testid="total"><strong>£{total_gbp}</strong></dd>
+  <dt>Deposit</dt>    <dd data-testid="deposit">£{deposit_required_gbp}</dd>
+</dl>
+</body>
+</html>
+"""
+
+
 def generate_flyer(session: Session, event_details: dict) -> ToolResult:
     """Produce an HTML flyer and write it to workspace/flyer.html.
 
@@ -126,7 +263,29 @@ def generate_flyer(session: Session, event_details: dict) -> ToolResult:
     IMPORTANT: this tool MUST be registered with parallel_safe=False
     because it writes a file.
     """
-    raise NotImplementedError("TODO 4: implement generate_flyer")
+    html = _FLYER_HTML.format(
+        venue_name=event_details.get("venue_name", "TBD"),
+        venue_address=event_details.get("venue_address", ""),
+        date=event_details.get("date", ""),
+        time=event_details.get("time", ""),
+        party_size=event_details.get("party_size", ""),
+        condition=event_details.get("condition", ""),
+        temperature_c=event_details.get("temperature_c", ""),
+        total_gbp=event_details.get("total_gbp", 0),
+        deposit_required_gbp=event_details.get("deposit_required_gbp", 0),
+    )
+
+    flyer_path = session.workspace_dir / "flyer.html"
+    flyer_path.parent.mkdir(parents=True, exist_ok=True)
+    flyer_path.write_text(html, encoding="utf-8")
+
+    output = {"path": "workspace/flyer.html", "bytes_written": len(html)}
+    record_tool_call("generate_flyer", {"event_details": event_details}, output)
+    return ToolResult(
+        success=True,
+        output=output,
+        summary=f"generate_flyer: wrote workspace/flyer.html ({len(html)} chars)",
+    )
 
 
 # ---------------------------------------------------------------------------
