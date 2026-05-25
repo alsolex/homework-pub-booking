@@ -1,0 +1,21 @@
+{
+  "ticket_id": "tk_02aa6926",
+  "operation": "planner.plan",
+  "started_at": "2026-05-25T13:34:30.079686+00:00",
+  "completed_at": "2026-05-25T13:34:43.628647+00:00",
+  "duration_ms": 13548,
+  "outputs": [
+    {
+      "path": "/Users/alexey/Desktop/projects/homework-pub-booking/evidence/homework/ex5/sess_7fc879f76f7a/logs/tickets/tk_02aa6926/raw_output.json",
+      "sha256": "13416a18b1e4bbab1498d2fe05526bc3051b99ed253ff9f0f4956b8fcd092e72",
+      "size_bytes": 653,
+      "content_type": "application/json"
+    }
+  ],
+  "metrics": {
+    "num_subgoals": 1,
+    "llm_tokens_in": 519,
+    "llm_tokens_out": 484,
+    "llm_model": "Qwen/Qwen3-32B"
+  }
+}

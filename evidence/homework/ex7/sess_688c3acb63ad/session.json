@@ -1,0 +1,53 @@
+{
+  "session_id": "sess_688c3acb63ad",
+  "version": 1,
+  "created_at": "2026-05-25T13:37:01.141438+00:00",
+  "updated_at": "2026-05-25T13:39:27.114678+00:00",
+  "scenario": "ex7-handoff-bridge",
+  "state": "completed",
+  "user_id": null,
+  "current_half": "loop",
+  "planner": {
+    "subgoals": [
+      {
+        "id": "sg_1",
+        "description": "Search for an available Edinburgh venue using venue_search, retrying with party_size='6' to address the 'party_too_large' rejection",
+        "success_criterion": "handoff_to_structured was called with valid booking data",
+        "estimated_tool_calls": 2,
+        "depends_on": [],
+        "assigned_half": "loop",
+        "status": "pending"
+      }
+    ]
+  },
+  "executor": {},
+  "structured": {},
+  "memory": {},
+  "handoff_history": [],
+  "bare_mode": false,
+  "config_overrides": {},
+  "result": {
+    "committed": true,
+    "booking": {
+      "venue_id": "royal_oak",
+      "date": "2026-04-25",
+      "time": "19:30",
+      "party_size": 6,
+      "deposit_gbp": 0,
+      "duration_hours": 3,
+      "catering_tier": "bar_snacks"
+    },
+    "booking_reference": "BK-F3DA6A8C",
+    "rasa_response": [
+      {
+        "recipient_id": "homework-80501441",
+        "text": "Booking confirmed. Reference: BK-F3DA6A8C."
+      },
+      {
+        "recipient_id": "homework-80501441",
+        "text": "Is there anything else I can help you with?"
+      }
+    ]
+  },
+  "resumed_from": null
+}

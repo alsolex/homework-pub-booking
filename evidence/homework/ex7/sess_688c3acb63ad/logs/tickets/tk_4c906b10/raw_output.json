@@ -1,0 +1,59 @@
+{
+  "subgoal_id": "sg_1",
+  "success": true,
+  "final_answer": "(handoff requested)",
+  "tool_calls_made": [
+    {
+      "name": "venue_search",
+      "arguments": {
+        "near": "Haymarket",
+        "party_size": 12
+      },
+      "success": true,
+      "summary": "venue_search('Haymarket', party=12): 0 result(s)",
+      "requires_human_approval": false
+    },
+    {
+      "name": "venue_search",
+      "arguments": {
+        "near": "Old Town",
+        "party_size": 12
+      },
+      "success": true,
+      "summary": "venue_search('Old Town', party=12): 1 result(s)",
+      "requires_human_approval": false
+    },
+    {
+      "name": "handoff_to_structured",
+      "arguments": {
+        "reason": "Found suitable venue in Old Town",
+        "context": "Venue: The Royal Oak (Old Town), Seats available: 16, Hire fee: \u00a350, Min spend: \u00a3400",
+        "data": {
+          "action": "confirm_booking",
+          "venue_id": "royal_oak",
+          "date": "2026-04-25",
+          "time": "19:30",
+          "party_size": "12",
+          "deposit": "\u00a30"
+        }
+      },
+      "success": true,
+      "summary": "handoff to structured half: Found suitable venue in Old Town",
+      "requires_human_approval": false
+    }
+  ],
+  "turns_used": 3,
+  "handoff_requested": true,
+  "handoff_payload": {
+    "reason": "Found suitable venue in Old Town",
+    "context": "Venue: The Royal Oak (Old Town), Seats available: 16, Hire fee: \u00a350, Min spend: \u00a3400",
+    "data": {
+      "action": "confirm_booking",
+      "venue_id": "royal_oak",
+      "date": "2026-04-25",
+      "time": "19:30",
+      "party_size": "12",
+      "deposit": "\u00a30"
+    }
+  }
+}

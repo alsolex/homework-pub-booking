@@ -1,0 +1,11 @@
+[
+  {
+    "id": "sg_1",
+    "description": "Search for an available Edinburgh venue using venue_search, retrying with party_size='6' to address the 'party_too_large' rejection",
+    "success_criterion": "handoff_to_structured was called with valid booking data",
+    "estimated_tool_calls": 2,
+    "depends_on": [],
+    "assigned_half": "loop",
+    "status": "pending"
+  }
+]

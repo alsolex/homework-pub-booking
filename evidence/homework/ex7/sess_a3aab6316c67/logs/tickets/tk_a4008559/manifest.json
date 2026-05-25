@@ -1,0 +1,20 @@
+{
+  "ticket_id": "tk_a4008559",
+  "operation": "executor.run_subgoal/sg_1",
+  "started_at": "2026-05-25T13:36:55.326289+00:00",
+  "completed_at": "2026-05-25T13:36:55.327010+00:00",
+  "duration_ms": 0,
+  "outputs": [
+    {
+      "path": "/Users/alexey/Desktop/projects/homework-pub-booking/evidence/homework/ex7/sess_a3aab6316c67/logs/tickets/tk_a4008559/raw_output.json",
+      "sha256": "aca794b528b55f4a24da0ba5f58eea6c60bd80b4430c09fc17b450cbb88cdc25",
+      "size_bytes": 1628,
+      "content_type": "application/json"
+    }
+  ],
+  "metrics": {
+    "tool_calls": 2,
+    "turns_used": 2,
+    "handoff_requested": true
+  }
+}

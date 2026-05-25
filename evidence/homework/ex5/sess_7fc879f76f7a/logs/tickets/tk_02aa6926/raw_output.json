@@ -1,0 +1,11 @@
+[
+  {
+    "id": "sg_1",
+    "description": "Step 1: call venue_search(near='Haymarket', party_size=6, budget_max_gbp=800) AND get_weather(city='edinburgh', date='2026-04-25') in one parallel turn. Step 2: call calculate_cost(venue_id=<id from venue_search>, party_size=6, duration_hours=3, catering_tier='bar_snacks'). Step 3: call generate_flyer with event_details built ONLY from the tool outputs just received \u2014 do not invent values. Step 4: call complete_task and stop.",
+    "success_criterion": "flyer.html written to workspace/",
+    "estimated_tool_calls": 5,
+    "depends_on": [],
+    "assigned_half": "loop",
+    "status": "pending"
+  }
+]

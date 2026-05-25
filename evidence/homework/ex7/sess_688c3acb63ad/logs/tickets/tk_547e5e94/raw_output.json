@@ -1,0 +1,11 @@
+[
+  {
+    "id": "sg_1",
+    "description": "Search for an available Edinburgh venue near Haymarket using venue_search. If no results, try near='Old Town' or near='Tollcross'. Call handoff_to_structured with booking data (party_size=12) if a venue is found.",
+    "success_criterion": "handoff_to_structured was called with valid booking data",
+    "estimated_tool_calls": 2,
+    "depends_on": [],
+    "assigned_half": "loop",
+    "status": "pending"
+  }
+]

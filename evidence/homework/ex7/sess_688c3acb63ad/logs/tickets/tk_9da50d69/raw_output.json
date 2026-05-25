@@ -1,0 +1,49 @@
+{
+  "subgoal_id": "sg_1",
+  "success": true,
+  "final_answer": "(handoff requested)",
+  "tool_calls_made": [
+    {
+      "name": "venue_search",
+      "arguments": {
+        "near": "Old Town",
+        "party_size": 6
+      },
+      "success": true,
+      "summary": "venue_search('Old Town', party=6): 1 result(s)",
+      "requires_human_approval": false
+    },
+    {
+      "name": "handoff_to_structured",
+      "arguments": {
+        "reason": "Confirming booking after successful venue search for party of 6",
+        "context": "Venue search in Old Town area found The Royal Oak with 16 seats available. Party size adjusted to 6 to meet capacity requirements.",
+        "data": {
+          "action": "confirm_booking",
+          "venue_id": "royal_oak",
+          "date": "2026-04-25",
+          "time": "19:30",
+          "party_size": "6",
+          "deposit": "\u00a30"
+        }
+      },
+      "success": true,
+      "summary": "handoff to structured half: Confirming booking after successful venue search for party of 6",
+      "requires_human_approval": false
+    }
+  ],
+  "turns_used": 2,
+  "handoff_requested": true,
+  "handoff_payload": {
+    "reason": "Confirming booking after successful venue search for party of 6",
+    "context": "Venue search in Old Town area found The Royal Oak with 16 seats available. Party size adjusted to 6 to meet capacity requirements.",
+    "data": {
+      "action": "confirm_booking",
+      "venue_id": "royal_oak",
+      "date": "2026-04-25",
+      "time": "19:30",
+      "party_size": "6",
+      "deposit": "\u00a30"
+    }
+  }
+}
