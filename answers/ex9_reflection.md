@@ -124,6 +124,6 @@ but not in any upstream tool's `output` record.
 ### Citation
 
 - `starter/edinburgh_research/integrity.py:35–38` — `record_tool_call` and `_TOOL_CALL_LOG`
-- `starter/edinburgh_research/integrity.py:99–114` — `verify_dataflow` scanning `r.output` only
+- `starter/edinburgh_research/integrity.py:99–114` — `fact_appears_in_log`, the helper that scans `r.output` only (called from `verify_dataflow` at line 120)
 - `evidence/homework/ex5/sess_7fc879f76f7a/workspace/flyer.html` — verified facts: £556, £111, 12°C, cloudy
 - `evidence/homework/ex5/sess_7fc879f76f7a/logs/tickets/tk_7826fd9a/raw_output.json` — 5 tool calls confirming all values were sourced from upstream tools

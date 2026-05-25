@@ -1,0 +1,21 @@
+{
+  "ticket_id": "tk_d290cadb",
+  "operation": "planner.plan",
+  "started_at": "2026-05-25T14:35:54.084426+00:00",
+  "completed_at": "2026-05-25T14:35:54.084565+00:00",
+  "duration_ms": 0,
+  "outputs": [
+    {
+      "path": "/Users/alexey/Desktop/projects/homework-pub-booking/evidence/homework/ex5/sess_746c2142967e/logs/tickets/tk_d290cadb/raw_output.json",
+      "sha256": "7579ba8bb91003324d96a65540c57636190a69e1991148ec0e912e8befa39930",
+      "size_bytes": 318,
+      "content_type": "application/json"
+    }
+  ],
+  "metrics": {
+    "num_subgoals": 1,
+    "llm_tokens_in": 10,
+    "llm_tokens_out": 10,
+    "llm_model": "fake"
+  }
+}

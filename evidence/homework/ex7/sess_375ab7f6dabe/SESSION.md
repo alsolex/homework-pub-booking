@@ -1,7 +1,7 @@
-# Session sess_557f3e715873
+# Session sess_375ab7f6dabe
 
-**Scenario:** ex6-rasa
-**Created:** 2026-05-25T13:36:04.883774+00:00
+**Scenario:** ex7-handoff-bridge
+**Created:** 2026-05-25T14:35:54.801964+00:00
 
 ## Your task
 
@@ -12,7 +12,7 @@ be added by the scenario author.)
 
 ## Task description
 
-Confirm a booking through the Rasa structured half.
+Book a venue for 12 people in Haymarket, Friday 19:30.
 
 ## Constraints
 

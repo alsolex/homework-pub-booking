@@ -29,7 +29,16 @@ error codes (e.g. `{"error": "PARTY_EXCEEDS_CAPACITY", "limit": 8}`) so the
 bridge can act on them programmatically without string-parsing, and the
 human-readable copy lives in a translation layer.
 
+Ex6 sessions remain at `state: "planning"` in `session.json` because
+`RasaStructuredHalf.run()` invokes the structured half directly — it never
+passes through the planner or executor, so no `trace.jsonl` or tickets are
+written. The scenario's output is visible at the terminal: running `make ex6`
+with `deposit=£200, party_size=6` returns `next_action: complete` and
+`booking_reference: BK-7D401E9E`; passing `party_size=12` or `deposit=£500`
+returns `next_action: escalate` with the appropriate reason.
+
 ## Citations
 
-- `evidence/homework/ex6/sess_557f3e715873/session.json` — session created, scenario "ex6-rasa", confirms the structured-half scenario ran
-- `evidence/homework/ex6/sess_c75c0e4b2ade/session.json` — second ex6 session, same scenario, confirming repeatability of the mock-tier setup
+- `starter/rasa_half/structured_half.py:75–213` — `RasaStructuredHalf.run()`: normalise → POST → parse → `HalfResult`
+- `starter/rasa_half/validator.py:52–106` — `normalise_booking_payload`: currency, time, venue_id, party_size, date normalisation
+- `starter/rasa_half/structured_half.py:451–464` — mock: `party > 8` → `party_too_large`; `deposit > 300` → `deposit_too_high`
