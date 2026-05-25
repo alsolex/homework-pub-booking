@@ -2,25 +2,29 @@
 
 ## Your answer
 
-The planner produced two subgoals: sg_1 (research venues near Haymarket
-for a party of 6, assigned to loop) and sg_2 (produce a flyer with the
-chosen venue, weather, and cost, also loop). Both ran in the same
-executor session.
+The planner produced one subgoal (ticket `tk_02aa6926`): research venues
+near Haymarket, get weather, calculate cost, generate a flyer, then call
+`complete_task`. `estimated_tool_calls: 5`, `assigned_half: "loop"`.
 
-Turn 1 called venue_search, get_weather, and calculate_cost in parallel
-— all three are parallel_safe because they only read fixtures. Turn 2
-wrote the flyer via generate_flyer (parallel_safe=False because it
-writes a file). Turn 3 called complete_task.
+The executor issued `venue_search(near='Haymarket', party_size=6,
+budget_max_gbp=800)` and `get_weather(city='edinburgh', date='2026-04-25')`
+in the same response — both carry `parallel_safe=True` and the framework ran
+them concurrently (identical timestamp, 13:34:52 UTC). The next turn called
+`calculate_cost(venue_id='haymarket_tap', party_size=6, duration_hours=3,
+catering_tier='bar_snacks')` returning total £556, deposit £111. Then
+`generate_flyer` wrote `workspace/flyer.html` (1056 bytes). Finally
+`complete_task` closed the session.
 
-The dataflow integrity check caught one issue during development: the
-template for "no deposit required" originally read "total under £300
-threshold", which put £300 in the flyer prose. That value was never
-returned by any tool — it's a rule threshold, not data. I simplified
-the phrasing to "No deposit required for this booking." Without the
-integrity check this would have slipped past review because £300 looks
-like a reasonable number in the right context.
+The dataflow integrity check would have caught any fabricated value in the
+flyer. The critical bug in the original `fact_appears_in_log`: it scanned
+both `r.output` and `r.arguments`. Because `record_tool_call` stores
+`generate_flyer`'s `event_details` dict as its `arguments`, a fabricated
+cost (e.g. £999) would appear in `generate_flyer`'s own arguments record
+and `fact_appears_in_log` would find it there, returning `True`. The fix
+was to scan only `r.output`, so every value in the flyer must trace back to
+an upstream tool's response, not to the sink tool's own input.
 
 ## Citations
 
-- sessions/sess_*/logs/trace.jsonl — tool call sequence
-- sessions/sess_*/workspace/flyer.md — the produced flyer
+- `evidence/homework/ex5/sess_7fc879f76f7a/logs/tickets/tk_02aa6926/raw_output.json` — planner ticket: 1 subgoal, estimated_tool_calls=5
+- `evidence/homework/ex5/sess_7fc879f76f7a/logs/trace.jsonl` — venue_search and get_weather at same timestamp (parallel), then calculate_cost, generate_flyer, complete_task in sequence

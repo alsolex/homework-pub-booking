@@ -2,31 +2,33 @@
 
 ## Your answer
 
-The HandoffBridge orchestrates round-trips between the loop half and
-structured half. Each round: loop runs, if next_action=handoff_to_structured
-the bridge writes a forward handoff file, invokes structured, and then
-either marks the session complete (structured confirmed) or builds a
-reverse task and loops back (structured escalated).
+The bridge starts with `bridge.round_start {round: 1, half: "loop"}`
+(trace line 1). The planner emits one subgoal; the executor calls
+`venue_search(near='Haymarket', party_size=12)` — 0 results (line 4), then
+`venue_search(near='Old Town', party_size=12)` — 1 result: The Royal Oak,
+16 seats (line 5). The executor then calls `handoff_to_structured` with
+`venue_id: "royal_oak", party_size: "12", deposit: "£0"` (line 6). The
+bridge archives the IPC file and emits `session.state_changed: loop →
+structured, round 1` (line 7). System state: structured half active.
 
-The reverse-task path is the interesting one. On escalation, the
-bridge rewrites the initial_task into a dict that contains
-prior_result + rejection_reason + retry=True. The loop half sees
-this via the new executor invocation and — in a real LLM setting —
-would produce a different subgoal. In the scripted offline demo we
-hardcode the retry choice (royal_oak with 16 seats) so the test is
-deterministic.
+The structured half (Rasa) rejects: `session.state_changed: structured →
+loop, round 1, rejection_reason: "party_too_large"` (line 8). The system
+returns to the loop half.
 
-Every half transition emits a session.state_changed trace event via
-session.append_trace_event(). The integrity check (integrity.py)
-verifies the trace has at least one round_start, at least one
-state_changed, and at least one tool call — catching the case where
-the bridge reports success without doing real work.
+The second research cycle begins at line 9: `bridge.round_start {round: 2,
+half: "loop"}`. The bridge rebuilds the task with the rejection reason
+embedded. The planner is reinvoked (line 10) and produces a new subgoal.
+The executor calls `venue_search(near='Old Town', party_size=6)` — 1 result
+(line 12), then `handoff_to_structured` with `party_size: "6"` (line 13).
+`session.state_changed: loop → structured, round 2` (line 14). Rasa
+accepts; `session.state_changed: structured → complete, round 2` (line 15).
 
-The stale-handoff cleanup moves old ipc/handoff_to_structured.json
-files into logs/handoffs/ instead of deleting them, preserving the
-audit trail.
+The bridge moves the round 1 forward handoff to `logs/handoffs/round_1_forward.json`
+before starting round 2, so the full audit trail is preserved even though
+only one `ipc/handoff_to_structured.json` file exists at any time.
 
 ## Citations
 
-- starter/handoff_bridge/bridge.py — HandoffBridge.run + helpers
-- starter/handoff_bridge/integrity.py — verify_dataflow
+- `evidence/homework/ex7/sess_688c3acb63ad/logs/trace.jsonl:7` — `session.state_changed: loop → structured, round 1` (forward handoff)
+- `evidence/homework/ex7/sess_688c3acb63ad/logs/trace.jsonl:8` — `session.state_changed: structured → loop, round 1, rejection_reason: party_too_large`
+- `evidence/homework/ex7/sess_688c3acb63ad/logs/trace.jsonl:9` — `bridge.round_start {round: 2}` — exact line where the second research cycle begins

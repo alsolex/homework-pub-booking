@@ -1,29 +1,35 @@
-# Ex6 — Rasa structured half
+# Ex6 — Rasa integration
 
 ## Your answer
 
-The RasaStructuredHalf subclass overrides run() to POST a booking
-intent to Rasa's REST webhook and interpret the response. Input
-payload flows: loop half produces raw booking data → StructuredHalf
-calls normalise_booking_payload (via validator.py) to produce a
-Rasa-shaped message with canonical types → urllib POST to Rasa →
-parse response for {action: committed} or {action: rejected} custom
-slots.
+`RasaStructuredHalf.run()` receives the handoff payload as a raw `dict`.
+Step 1: `normalise_booking_payload` in `validator.py` canonicalises types
+before sending. `parse_currency_gbp` strips the £ sign and casts to int.
+`parse_time_24h` normalises "7:30pm" to "19:30". `canonicalise_venue_id`
+lower-cases and slug-fies the venue string. `parse_party_size` casts to int.
+Step 2: the cleaned dict is JSON-serialised and sent as
+`{"sender": sender_id, "message": <json>}` to the Rasa REST webhook via a
+`urllib.request.urlopen` POST. The `sender_id` is a deterministic hash of
+`(venue_id, date, time)` so the Rasa tracker is consistent across retries
+within one session.
 
-For offline mode we spawn a stdlib http.server thread that mimics a
-Rasa webhook. It always confirms, which is enough for unit tests.
-Rejection is exercised in Ex7 where the loop half's arguments drive
-the decision.
+`ActionValidateBooking` in `rasa_project/actions/actions.py` reads slots
+from the tracker. If `party_size > 8` it emits a `SlotSet` for
+`rejection_reason` and returns a message with `"action": "rejected"`. The
+structured half reads the response body, finds `"action": "rejected"`, and
+returns `HalfResult(success=False, next_action="escalate",
+data={"rejection_reason": "party_too_large"})`. `ValidationFailed`
+exceptions raised inside `normalise_booking_payload` are caught in `run()`
+and also wrapped into a failed `HalfResult` rather than propagating — the
+`StructuredHalf` contract requires a result, not an exception.
 
-Three design choices worth noting: (1) we raise ValidationFailed in
-normalise_booking_payload and catch it in run() rather than letting
-it propagate; the StructuredHalf contract demands a HalfResult. (2)
-Network errors return success=False with SA_EXT_SERVICE_UNAVAILABLE
-— the caller decides whether to retry. (3) The stable sender_id is a
-hash of (venue+date+time) so the Rasa tracker is consistent across
-retries within one session.
+One production change: the mock server returns human-readable rejection
+strings like `"party_too_large"`. In production these should be structured
+error codes (e.g. `{"error": "PARTY_EXCEEDS_CAPACITY", "limit": 8}`) so the
+bridge can act on them programmatically without string-parsing, and the
+human-readable copy lives in a translation layer.
 
 ## Citations
 
-- starter/rasa_half/validator.py — normalise_booking_payload + helpers
-- starter/rasa_half/structured_half.py — RasaStructuredHalf.run + mock server
+- `evidence/homework/ex6/sess_557f3e715873/session.json` — session created, scenario "ex6-rasa", confirms the structured-half scenario ran
+- `evidence/homework/ex6/sess_c75c0e4b2ade/session.json` — second ex6 session, same scenario, confirming repeatability of the mock-tier setup
