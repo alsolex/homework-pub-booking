@@ -1,9 +1,0 @@
-{
-  "ticket_id": "tk_d290cadb",
-  "operation": "planner.plan",
-  "state": "success",
-  "started_at": "2026-05-25T14:35:54.084265+00:00",
-  "completed_at": "2026-05-25T14:35:54.084625+00:00",
-  "error_code": null,
-  "error_message": null
-}
